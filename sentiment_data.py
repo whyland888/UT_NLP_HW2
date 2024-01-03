@@ -119,7 +119,6 @@ class WordEmbeddings:
             return self.vectors[self.word_indexer.index_of("UNK")]
 
 
-
 def read_word_embeddings(embeddings_file: str) -> WordEmbeddings:
     """
     Loads the given embeddings (ASCII-formatted) into a WordEmbeddings object. Augments this with an UNK embedding
@@ -156,7 +155,7 @@ def read_word_embeddings(embeddings_file: str) -> WordEmbeddings:
 
 
 #################
-# You probably don't need to interact with this code unles you want to relativize other sets of embeddings
+# You probably don't need to interact with this code unless you want to relativize other sets of embeddings
 # to this data. Relativization = restrict the embeddings to only have words we actually need in order to save memory.
 # Very advantageous, though it requires knowing your dataset in advance, so it couldn't be used in a production system
 # operating on streaming data.
