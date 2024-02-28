@@ -58,7 +58,6 @@ class NeuralSentimentClassifier(SentimentClassifier):
         self.embeddings = embeddings
 
 
-
 def train_deep_averaging_network(args, train_exs: List[SentimentExample], dev_exs: List[SentimentExample],
                                  word_embeddings: WordEmbeddings, train_model_for_typo_setting: bool) -> NeuralSentimentClassifier:
     """
