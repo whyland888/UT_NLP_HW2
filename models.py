@@ -45,7 +45,7 @@ class TrivialSentimentClassifier(SentimentClassifier):
         return 1
 
 
-class NeuralSentimentClassifier(SentimentClassifier, nn.Module):
+class NeuralSentimentClassifier(SentimentClassifier):
     """
     Implement your NeuralSentimentClassifier here. This should wrap an instance of the network with learned weights
     along with everything needed to run it on new data (word embeddings, etc.). You will need to implement the predict
@@ -57,23 +57,30 @@ class NeuralSentimentClassifier(SentimentClassifier, nn.Module):
         self.labels = [ex.label for ex in data]
         self.texts = [ex.words for ex in data]
         self.embeddings = embeddings
-
-        # Network layers
-        self.embedding_layer = self.embeddings.get_initialized_embedding_layer()
-        self.fc1 = nn.Linear(self.embeddings.get_embedding_length(), 32)
-        self.fc2 = nn.Linear(32, 2)
-
-    def forward(self, text):
-        embedded_words = [self.embeddings.get_embedding(word) for word in text]
-        avg_embedding = torch.mean(embedded_words, dim=1)
-        fc1_out = self.fc1(avg_embedding)
-        output = self.fc2(fc1_out)
-        return output
+        self.model = self.DAN(embeddings)
 
     def predict(self, ex_words: List[str], has_typos: bool) -> int:
-        outputs = self(ex_words)
+        outputs = self.model(ex_words)
         prediction = torch.max(outputs, 1)[1]  # Gives index of higher output
         return prediction
+
+    class DAN(nn.Module):
+        def __init__(self, embeddings):
+            super().__init__()
+            # Network layers
+            self.embeddings = embeddings
+            self.embedding_layer = embeddings.get_initialized_embedding_layer()
+            self.embedding_length = embeddings.get_embedding_length()
+            self.fc1 = nn.Linear(self.embedding_length, 32)
+            self.fc2 = nn.Linear(32, 2)
+
+        def forward(self, text):
+            embedded_words = [self.embeddings.get_embedding(word) for word in text]
+            avg_embedding = torch.tensor(np.mean(embedded_words, axis=0),
+                                         dtype=torch.float32)
+            fc1_out = self.fc1(avg_embedding)
+            output = self.fc2(fc1_out)
+            return output
 
 
 def train_deep_averaging_network(args, train_exs: List[SentimentExample], dev_exs: List[SentimentExample],
@@ -88,7 +95,11 @@ def train_deep_averaging_network(args, train_exs: List[SentimentExample], dev_ex
     and return an instance of that for the typo setting if you want; you're allowed to return two different model types
     for the two settings.
     """
-    model = NeuralSentimentClassifier(data=train_exs, embeddings=word_embeddings)
+    Classifier = NeuralSentimentClassifier(data=train_exs, embeddings=word_embeddings)
+    n_iters = 20
+
+    for i in range(n_iters):
+
 
     # Create training loop
 
