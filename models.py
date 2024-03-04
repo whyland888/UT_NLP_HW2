@@ -52,35 +52,49 @@ class NeuralSentimentClassifier(SentimentClassifier):
     method and you can optionally override predict_all if you want to use batching at inference time (not necessary,
     but may make things faster!)
     """
-    def __init__(self, data, embeddings):
+    def __init__(self, data, embeddings, input_dim, hidden_dims, output_dim):
         super().__init__()
         self.labels = [ex.label for ex in data]
         self.texts = [ex.words for ex in data]
         self.embeddings = embeddings
-        self.model = self.DAN(embeddings)
+        self.model = self.DAN(embeddings=embeddings, input_dim=input_dim,
+                              hidden_dims=hidden_dims, output_dim=output_dim)
 
     def predict(self, ex_words: List[str], has_typos: bool) -> int:
         outputs = self.model(ex_words)
-        prediction = torch.max(outputs, 1)[1]  # Gives index of higher output
+        _, prediction = torch.max(outputs, dim=0) # Gives index of higher output
         return prediction
 
     class DAN(nn.Module):
-        def __init__(self, embeddings):
+        def __init__(self, embeddings, input_dim, hidden_dims, output_dim):
             super().__init__()
-            # Network layers
             self.embeddings = embeddings
-            self.embedding_layer = embeddings.get_initialized_embedding_layer()
-            self.embedding_length = embeddings.get_embedding_length()
-            self.fc1 = nn.Linear(self.embedding_length, 32)
-            self.fc2 = nn.Linear(32, 2)
+            self.softmax = nn.Softmax(dim=0)
+
+            # Fully connected layers
+            self.fc_layers = nn.Sequential()
+            prev_dim = input_dim
+            for hidden_dim in hidden_dims:
+                self.fc_layers.append(nn.Linear(prev_dim, hidden_dim))
+                prev_dim = hidden_dim
+            self.fc_layers.append(nn.Linear(prev_dim, output_dim))
+
+            # Activation function
+            self.activation = nn.ReLU()
 
         def forward(self, text):
+            # Averaging
             embedded_words = [self.embeddings.get_embedding(word) for word in text]
-            avg_embedding = torch.tensor(np.mean(embedded_words, axis=0),
-                                         dtype=torch.float32)
-            fc1_out = self.fc1(avg_embedding)
-            output = self.fc2(fc1_out)
-            return output
+            x = torch.tensor(np.mean(embedded_words, axis=0),
+                             dtype=torch.float32)
+
+            # Fully connected layers with ReLU
+            for fc_layer in self.fc_layers:
+                x = self.activation(fc_layer(x))
+
+            x = self.softmax(x)
+
+            return x
 
 
 def train_deep_averaging_network(args, train_exs: List[SentimentExample], dev_exs: List[SentimentExample],
@@ -95,13 +109,32 @@ def train_deep_averaging_network(args, train_exs: List[SentimentExample], dev_ex
     and return an instance of that for the typo setting if you want; you're allowed to return two different model types
     for the two settings.
     """
-    Classifier = NeuralSentimentClassifier(data=train_exs, embeddings=word_embeddings)
-    n_iters = 20
+    # Model
+    Classifier = NeuralSentimentClassifier(data=train_exs, embeddings=word_embeddings,
+                                           input_dim=word_embeddings.get_embedding_length(),
+                                           hidden_dims = [100, 50, 20], output_dim=2)
 
-    for i in range(n_iters):
+    # Set up training loop
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.AdamW(Classifier.model.parameters(), lr=0.0001)
+    num_epochs = 20
+    running_loss = []
+    for epoch in range(num_epochs):
+        epoch_loss = 0
+        steps = 0
+        for j, text in enumerate(Classifier.texts):
+            optimizer.zero_grad()
+            label = torch.tensor(Classifier.labels[j])
+            outputs = Classifier.model(text)
+            loss = criterion(outputs, label)
+            loss.backward()
+            optimizer.step()
 
+            epoch_loss += loss.item()
+            steps += 1
 
-    # Create training loop
+        running_loss.append(epoch_loss/steps)
+        print(f"Epoch {epoch} loss: {epoch_loss/steps}")
 
-    raise NotImplementedError
+    return Classifier
 
