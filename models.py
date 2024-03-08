@@ -6,7 +6,7 @@ from torch import optim
 import numpy as np
 import random
 from sentiment_data import *
-
+from torch.utils.data import Dataset, DataLoader
 
 class SentimentClassifier(object):
     """
@@ -59,6 +59,8 @@ class NeuralSentimentClassifier(SentimentClassifier):
         self.embeddings = embeddings
         self.model = self.DAN(embeddings=embeddings, input_dim=input_dim,
                               hidden_dims=hidden_dims, output_dim=output_dim)
+        self.dataset = self.SentimentDataset(texts=self.texts, labels=self.labels,
+                                             embedding_fn=self.embeddings.get_embedding)
 
     def predict(self, ex_words: List[str], has_typos: bool) -> int:
         outputs = self.model(ex_words)
@@ -82,12 +84,7 @@ class NeuralSentimentClassifier(SentimentClassifier):
             # Activation function
             self.activation = nn.ReLU()
 
-        def forward(self, text):
-            # Averaging
-            embedded_words = [self.embeddings.get_embedding(word) for word in text]
-            x = torch.tensor(np.mean(embedded_words, axis=0),
-                             dtype=torch.float32)
-
+        def forward(self, x):
             # Fully connected layers with ReLU
             for fc_layer in self.fc_layers:
                 x = self.activation(fc_layer(x))
@@ -95,6 +92,23 @@ class NeuralSentimentClassifier(SentimentClassifier):
             x = self.softmax(x)
 
             return x
+
+    class SentimentDataset(Dataset):
+        def __init__(self, texts, labels, embedding_fn):
+            self.texts = texts
+            self.labels = labels
+            self.embedding_fn = embedding_fn
+
+        def __len__(self):
+            return len(self.texts)
+
+        def __getitem__(self, idx):
+            text = self.texts[idx]
+            embedded_words = [self.embedding_fn(word) for word in text]
+            avg_embedding = torch.tensor(np.mean(embedded_words, axis=0),
+                                         dtype=torch.float32)
+            label = self.labels[idx]
+            return avg_embedding, label
 
 
 def train_deep_averaging_network(args, train_exs: List[SentimentExample], dev_exs: List[SentimentExample],
@@ -112,21 +126,23 @@ def train_deep_averaging_network(args, train_exs: List[SentimentExample], dev_ex
     # Model
     Classifier = NeuralSentimentClassifier(data=train_exs, embeddings=word_embeddings,
                                            input_dim=word_embeddings.get_embedding_length(),
-                                           hidden_dims = [100, 50, 20], output_dim=2)
+                                           hidden_dims=[32, 64, 128], output_dim=2)
+    # Data
+    batch_size = 1
+    dataloader = DataLoader(Classifier.dataset, batch_size=batch_size, shuffle=True)
 
     # Set up training loop
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(Classifier.model.parameters(), lr=0.0001)
+    optimizer = optim.AdamW(Classifier.model.parameters(), lr=.00005)
     num_epochs = 20
     running_loss = []
     for epoch in range(num_epochs):
         epoch_loss = 0
         steps = 0
-        for j, text in enumerate(Classifier.texts):
+        for texts, labels in dataloader:
             optimizer.zero_grad()
-            label = torch.tensor(Classifier.labels[j])
-            outputs = Classifier.model(text)
-            loss = criterion(outputs, label)
+            outputs = Classifier.model(texts)
+            loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
 
