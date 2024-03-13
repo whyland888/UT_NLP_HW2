@@ -1,5 +1,7 @@
 # utils.py
-
+import torch
+from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import Dataset
 
 class Indexer(object):
     """
@@ -46,7 +48,7 @@ class Indexer(object):
         :return: Returns -1 if the object isn't present, index otherwise
         """
         if (object not in self.objs_to_ints):
-            return -1
+            return 0
         else:
             return self.objs_to_ints[object]
 
@@ -143,6 +145,47 @@ class Beam(object):
 
     def head(self):
         return self.elts[0]
+
+
+class SentimentDataset(Dataset):
+    def __init__(self, data, indexer):
+        self.data = data
+        self.indexer = indexer
+        self.texts = [x.words for x in data]
+        self.labels = [x.label for x in data]
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        indices = torch.tensor([self.indexer.index_of(word) for word in self.texts[idx]])
+        label = self.labels[idx]
+        return indices, label
+
+
+class TestDataset(Dataset):
+    def __init__(self, texts, indexer):
+        self.texts = texts
+        self.indexer = indexer
+
+    def __len__(self):
+        return len(self.texts)
+
+    def __getitem__(self, idx):
+        indices = torch.tensor([self.indexer.index_of(word) for word in self.texts[idx]])
+        return indices
+
+
+def padding_collate(batch):
+    tensors, targets = zip(*batch)
+    features = pad_sequence(tensors, batch_first=True)
+    targets = torch.tensor(targets)
+    return features, targets
+
+
+def padding_collate_test(tensors):
+    features = pad_sequence(tensors, batch_first=True)
+    return features
 
 
 ##################
